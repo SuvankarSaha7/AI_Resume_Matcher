@@ -1,7 +1,28 @@
 import React, { useState } from 'react';
-import { Upload, File, X, User, Sparkles, CheckCircle2, FileText, Users } from 'lucide-react';
+import { Upload, File, X, User, Sparkles, CheckCircle2, FileText, Users, AlertCircle } from 'lucide-react';
 
-// Navbar Component
+// Add this Alert Component at the top
+const Alert = ({ type = 'error', message, onClose }) => {
+  const styles = {
+    error: 'bg-red-500/10 border-red-500/50 text-red-400',
+    warning: 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400',
+    success: 'bg-green-500/10 border-green-500/50 text-green-400',
+  };
+
+  return (
+    <div className={`relative flex items-center space-x-3 p-4 rounded-xl border ${styles[type]} mb-4 backdrop-blur-sm`}>
+      <AlertCircle className="w-5 h-5 flex-shrink-0" />
+      <p className="text-sm font-medium flex-1">{message}</p>
+      {onClose && (
+        <button onClick={onClose} className="flex-shrink-0">
+          <X className="w-4 h-4 hover:scale-110 transition-transform" />
+        </button>
+      )}
+    </div>
+  );
+};
+
+// Navbar Component (keep as is)
 const Navbar = () => {
   return (
     <nav className="bg-gradient-to-r from-slate-900 via-purple-900 to-slate-900 shadow-2xl border-b border-purple-500/20 backdrop-blur-xl">
@@ -35,9 +56,43 @@ const Navbar = () => {
   );
 };
 
-// FileUploadCard Component
+// UPDATED FileUploadCard Component with validation
 const FileUploadCard = ({ title, subtitle, files, onFileUpload, onFileRemove, accept, multiple = false, icon: Icon }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [error, setError] = useState(null);
+
+  // FILE SIZE LIMIT: 10MB
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB in bytes
+  const ALLOWED_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword', 'text/plain'];
+
+  const validateFiles = (filesToValidate) => {
+    const errors = [];
+    const validFiles = [];
+
+    filesToValidate.forEach(file => {
+      // Check file size
+      if (file.size > MAX_FILE_SIZE) {
+        errors.push(`"${file.name}" is too large (${(file.size / (1024 * 1024)).toFixed(2)}MB). Maximum size is 10MB.`);
+        return;
+      }
+
+      // Check if file is empty
+      if (file.size === 0) {
+        errors.push(`"${file.name}" is empty.`);
+        return;
+      }
+
+      // Check file type
+      if (!ALLOWED_TYPES.includes(file.type) && !file.name.match(/\.(pdf|docx|doc|txt)$/i)) {
+        errors.push(`"${file.name}" is not a supported file type. Please upload PDF, DOCX, DOC, or TXT files.`);
+        return;
+      }
+
+      validFiles.push(file);
+    });
+
+    return { validFiles, errors };
+  };
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -51,13 +106,34 @@ const FileUploadCard = ({ title, subtitle, files, onFileUpload, onFileRemove, ac
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragging(false);
+    setError(null);
+    
     const droppedFiles = Array.from(e.dataTransfer.files);
-    onFileUpload(droppedFiles);
+    const { validFiles, errors } = validateFiles(droppedFiles);
+
+    if (errors.length > 0) {
+      setError(errors.join(' '));
+      return;
+    }
+
+    onFileUpload(validFiles);
   };
 
   const handleFileChange = (e) => {
+    setError(null);
     const selectedFiles = Array.from(e.target.files);
-    onFileUpload(selectedFiles);
+    const { validFiles, errors } = validateFiles(selectedFiles);
+
+    if (errors.length > 0) {
+      setError(errors.join(' '));
+      // Clear the input
+      e.target.value = '';
+      return;
+    }
+
+    onFileUpload(validFiles);
+    // Clear the input so the same file can be selected again if needed
+    e.target.value = '';
   };
 
   return (
@@ -75,6 +151,15 @@ const FileUploadCard = ({ title, subtitle, files, onFileUpload, onFileRemove, ac
             <p className="text-sm text-purple-300">{subtitle}</p>
           </div>
         </div>
+
+        {/* Error Alert */}
+        {error && (
+          <Alert 
+            type="error" 
+            message={error} 
+            onClose={() => setError(null)} 
+          />
+        )}
         
         <div
           onDragOver={handleDragOver}
@@ -108,7 +193,10 @@ const FileUploadCard = ({ title, subtitle, files, onFileUpload, onFileRemove, ac
               </p>
               <p className="text-sm text-purple-300 flex items-center space-x-2">
                 <Sparkles className="w-4 h-4" />
-                <span>Supports PDF, DOCX, and TXT files</span>
+                <span>Supports PDF, DOCX, DOC, and TXT files</span>
+              </p>
+              <p className="text-xs text-purple-400 mt-2">
+                Maximum file size: 10MB
               </p>
             </div>
           </label>
@@ -169,14 +257,13 @@ const FileUploadCard = ({ title, subtitle, files, onFileUpload, onFileRemove, ac
   );
 };
 
-// Main Dashboard Component
+// Main Dashboard Component (keep the rest as is, just update the handleJobDescriptionUpload)
 const Dashboard = () => {
   const [jobDescriptions, setJobDescriptions] = useState([]);
   const [resumes, setResumes] = useState([]);
 
   const handleJobDescriptionUpload = (newFiles) => {
-    if(newFiles.length>0){
-
+    if(newFiles.length > 0){
       setJobDescriptions([newFiles[0]]);
     }
   };

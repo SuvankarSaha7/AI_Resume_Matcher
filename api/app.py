@@ -29,7 +29,49 @@ app.add_middleware(
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
+
+MAX_FILE_SIZE = 10 * 1024 * 1024 # 10 MB limit
 async def save_upload_to_tempfile(upload: UploadFile) -> str:
+    """
+    Save UploadFile to a named tempfile and return path.
+    Uses async read.
+    """
+    filename = (upload.filename or "").lower()
+
+    # Read file content
+    data = await upload.read()
+
+    # ADD THIS VALIDATION
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    
+    if len(data) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)} MB")
+
+    # Check file type
+    if not filename.endswith((".pdf", ".docx", ".txt")):
+        raise HTTPException(status_code=400, detail="Unsupported file type. Please upload PDF, DOCX, or TXT files only")
+
+    # Rest of your code...
+    suffix = ""
+    if filename.endswith(".pdf"):
+        suffix = ".pdf"
+    elif filename.endswith(".docx"):
+        suffix = ".docx"
+    elif filename.endswith(".txt"):
+        suffix = ".txt"
+
+    tf = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        tf.write(data)
+        tf.flush()
+        return tf.name
+    finally:
+        tf.close()
+
+
+
+        
     """
     Save UploadFile to a named tempfile and return path.
     Uses async read.
