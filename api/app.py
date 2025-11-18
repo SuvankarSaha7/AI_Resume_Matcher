@@ -29,84 +29,41 @@ app.add_middleware(
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 15 MB (increase if you really need to, but stay < 25 MB for Vercel Pro)
 
-MAX_FILE_SIZE = 10 * 1024 * 1024 # 10 MB limit
 async def save_upload_to_tempfile(upload: UploadFile) -> str:
-    """
-    Save UploadFile to a named tempfile and return path.
-    Uses async read.
-    """
-    filename = (upload.filename or "").lower()
+    if not upload.filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
 
-    # Read file content
-    data = await upload.read()
+    if not upload.filename.lower().endswith((".pdf", ".docx", ".txt")):
+        raise HTTPException(status_code=400, detail="Only .pdf, .docx, .txt files are allowed")
 
-    # ADD THIS VALIDATION
-    if len(data) == 0:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty")
-    
-    if len(data) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)} MB")
+    suffix = os.path.splitext(upload.filename)[1]  # keeps the correct extension
 
-    # Check file type
-    if not filename.endswith((".pdf", ".docx", ".txt")):
-        raise HTTPException(status_code=400, detail="Unsupported file type. Please upload PDF, DOCX, or TXT files only")
+    path = tempfile.mktemp(suffix=suffix)
 
-    # Rest of your code...
-    suffix = ""
-    if filename.endswith(".pdf"):
-        suffix = ".pdf"
-    elif filename.endswith(".docx"):
-        suffix = ".docx"
-    elif filename.endswith(".txt"):
-        suffix = ".txt"
+    size = 0
+    CHUNK_SIZE = 1024 * 1024  # 1 MiB chunks
 
-    tf = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
     try:
-        tf.write(data)
-        tf.flush()
-        return tf.name
-    finally:
-        tf.close()
+        with open(path, "wb") as f:
+            async for chunk in upload:          # ← this is the correct async streaming way
+                size += len(chunk)
+                if size > MAX_FILE_SIZE:
+                    raise HTTPException(
+                        status_code=413,  # Payload Too Large
+                        detail=f"File '{upload.filename}' too large (max {MAX_FILE_SIZE // (1024*1024)} MB)"
+                    )
+                f.write(chunk)
+        if size == 0:
+            os.unlink(path)
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+        return path
+    except Exception:
+        if os.path.exists(path):
+            os.unlink(path)
+        raise
 
-
-
-        
-    """
-    Save UploadFile to a named tempfile and return path.
-    Uses async read.
-    """
-    filename = (upload.filename or "").lower()
-
-    # read once
-    data = await upload.read()
-
-    # basic checks
-    MAX_BYTES = 10 * 1024 * 1024  # 10 MB
-    if len(data) == 0:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty")
-    if len(data) > MAX_BYTES:
-        raise HTTPException(status_code=400, detail="File too large")
-    if not filename.endswith((".pdf", ".docx", ".txt")):
-        raise HTTPException(status_code=400, detail="Unsupported file type")
-
-    # choose suffix based on filename
-    suffix = ""
-    if filename.endswith(".pdf"):
-        suffix = ".pdf"
-    elif filename.endswith(".docx"):
-        suffix = ".docx"
-    elif filename.endswith(".txt"):
-        suffix = ".txt"
-
-    # write bytes to a NamedTemporaryFile
-    tf = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    try:
-        tf.write(data)
-        tf.flush()
-        return tf.name
-    finally:
-        tf.close()
 
 def extract_email(text: str):
     m = EMAIL_RE.search(text)
